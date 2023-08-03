@@ -1,2 +1,3 @@
 # pymol_scripts
-Some pymol scripts 
+This repo contains some pymol scripts. 
+
