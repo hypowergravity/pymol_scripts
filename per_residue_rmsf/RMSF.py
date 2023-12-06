@@ -6,7 +6,7 @@ import matplotlib.backends.backend_pdf
 import pandas as pd
 
 matplotlib.use('Agg')
-font = {'weight': 'bold','family':'sans-serif','sans-serif':['Helvetica']}
+font = {'weight': 'bold', 'family': 'sans-serif', 'sans-serif': ['Helvetica']}
 
 matplotlib.rc('font', **font)
 
@@ -20,7 +20,8 @@ class PymolRMSF:
         self.mean_coord = self.atom_cord()
         self.RMSF = self.calculte_rmsf()
         self.max = self.colour_by_RMSD()
-        self.plt_by_atom()
+        self.df = self.plt_by_atom()
+        self.plt_residue("plot")
 
     def load_trajectory(self):
         for frame in self.files:
@@ -37,7 +38,8 @@ class PymolRMSF:
 
     def remove_frames(self):
         cmd.remove(f"all and resi {self.residue}")
-        [cmd.remove(f"{x} and resi {self.residue} and alt 'A'") for x in self.files[1:]]
+        [cmd.remove(f"{x} and resi {self.residue} and alt 'A'")
+         for x in self.files[1:]]
 
     def atom_name(self):
         """:returns list of atom names and alt A coordinates"""
@@ -45,8 +47,10 @@ class PymolRMSF:
         atom_coord = {}
         for resi in self.residue.split("+"):
             atom_dict[f"d_{resi}"] = []
-            cmd.iterate(f"new and resi {resi} and not hydrogen", f"d_{resi}.append(name)", space=atom_dict)
-            atom_coord[f"d_{resi}"] = cmd.get_coords(f"{self.files[0]} and resi {resi} and not hydrogen and alt 'A'")
+            cmd.iterate(f"new and resi {resi} and not hydrogen",
+                        f"d_{resi}.append(name)", space=atom_dict)
+            atom_coord[f"d_{resi}"] = cmd.get_coords(
+                f"{self.files[0]} and resi {resi} and not hydrogen and alt 'A'")
 
         return atom_dict, atom_coord
 
@@ -55,7 +59,8 @@ class PymolRMSF:
         for resi in self.residue.split("+"):
             atom_coord[f"d_{resi}"] = []
             for x in self.files:
-                atom_coord[f"d_{resi}"].append(cmd.get_coords(f"{x} and resi {resi} and not hydrogen and alt 'B'"))
+                atom_coord[f"d_{resi}"].append(cmd.get_coords(
+                    f"{x} and resi {resi} and not hydrogen and alt 'B'"))
 
         mean_coord = {}
         for k in list(atom_coord.keys()):
@@ -90,7 +95,8 @@ class PymolRMSF:
         cmd.set("valence", "0")
         cmd.hide("all")
         cmd.show_as("cartoon", "pdb")
-        cmd.show("sticks", f"pdb and resi {self.residue} and not hydrogen and alt 'B'")
+        cmd.show(
+            "sticks", f"pdb and resi {self.residue} and not hydrogen and alt 'B'")
         cmd.cartoon("putty", "pdb")
         cmd.set("cartoon_putty_scale_min", 0, "pdb")
         cmd.set("cartoon_putty_scale_max", max, "pdb")
@@ -104,21 +110,43 @@ class PymolRMSF:
 
         return max
 
+    def plt_residue(self,type="bar"):
+        residue_dict_to_plot = {}
+        df_atom_name = self.df
+        df_atom_name = df_atom_name.fillna(0)
+        for c in self.df.columns:
+            residue_dict_to_plot[c] = np.mean(df_atom_name[df_atom_name[c] != 0][c])
+
+        residue_df = pd.DataFrame(residue_dict_to_plot.items(), columns=["residue_name", "RMSF"])
+
+        fig, ax = plt.subplots(figsize=(15, 8))
+        ax.bar(residue_df["residue_name"], residue_df["RMSF"]) if type == "bar" else ax.plot(residue_df["residue_name"], residue_df["RMSF"])
+        ax.set_ylabel(r'RMSF $\AA$')
+        ax.set_xlabel('Residue')
+        plt.xticks(rotation=90)
+        plt.tight_layout()
+        plt.savefig(f"per_residue_RMSF_{type}.png",dpi=300)
+        plt.close()
+
+
     @staticmethod
     def get_residue_name(resi):
-        my_dict = {"my_list":[]}
-        cmd.iterate(f"pdb and resi {resi}","my_list.append(resn)",space=my_dict)
+        my_dict = {"my_list": []}
+        cmd.iterate(f"pdb and resi {resi}",
+                    "my_list.append(resn)", space=my_dict)
         return list(my_dict.values())[0][0]
 
     def plt_by_atom(self):
         residue_list = {}
-        for k,v in self.atom_names.items():
-            dict_atom = dict(map(lambda i, j: (i, j), self.atom_names[k], self.RMSF[k]))
+        for k, v in self.atom_names.items():
+            dict_atom = dict(
+                map(lambda i, j: (i, j), self.atom_names[k], self.RMSF[k]))
             myKeys = list(dict_atom.keys())
             myKeys.sort()
             residue_list[k] = {i: dict_atom[i] for i in myKeys}
 
-        residue_list_sorted = [int(x.split("_")[1]) for x in list(residue_list.keys())]
+        residue_list_sorted = [int(x.split("_")[1])
+                               for x in list(residue_list.keys())]
         residue_list_sorted.sort()
 
         residue_dict = {i: residue_list[f"d_{i}"] for i in residue_list_sorted}
@@ -137,9 +165,10 @@ class PymolRMSF:
             fig, ax = plt.subplots(figsize=(15, 8))
             plt.subplot()
             df_atom_name = df_atom_name.fillna(0)
-            plt.plot(df_atom_name.index[df_atom_name[c] != 0], df_atom_name[df_atom_name[c] != 0][c])
+            plt.plot(df_atom_name.index[df_atom_name[c] != 0],
+                     df_atom_name[df_atom_name[c] != 0][c])
             plt.xticks(rotation=90)
-            plt.xlabel(f'Residue {c}',weight='bold')
+            plt.xlabel(f'Residue {c}', weight='bold')
             plt.ylabel('RMSF', weight='bold')
             plt.title(f'Per residue RMSF for heavy atom', weight='bold')
             # plt.grid()
@@ -150,10 +179,12 @@ class PymolRMSF:
             plt.close()
 
         pdf.close()
+        return df_atom_name
 
 def run():
     Files = [x for x in os.listdir() if "frame" in x]
     pdb = PymolRMSF(Files)
+
 
 if __name__ == "__main__":
     run()
