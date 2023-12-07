@@ -16,11 +16,12 @@ class PymolRMSF:
         self.files = files
         self.load_trajectory()
         self.residue = self.select_residue()
+        self.remove_frames()
         self.atom_names, self.atom_coord_A = self.atom_name()
-        self.mean_coord = self.atom_cord()
-        self.RMSF = self.calculte_rmsf()
+        self.mean_coord,self.atom_coord = self.atom_cord()
+        self.RMSF,self.RMSF_mean = self.calculte_rmsf()
         self.max = self.colour_by_RMSD()
-        self.df = self.plt_by_atom()
+        self.df,self.residue_df = self.plt_by_atom()
         self.plt_residue("plot")
 
     def load_trajectory(self):
@@ -37,9 +38,10 @@ class PymolRMSF:
         return residue
 
     def remove_frames(self):
-        cmd.remove(f"all and resi {self.residue}")
-        [cmd.remove(f"{x} and resi {self.residue} and alt 'A'")
+        # cmd.remove(f"all and resi {self.residue}")
+        [cmd.remove(f"{x} and not alt 'B'")
          for x in self.files[1:]]
+        cmd.save("20_togther.pdb", f"{' or '.join(self.files)}")
 
     def atom_name(self):
         """:returns list of atom names and alt A coordinates"""
@@ -67,15 +69,31 @@ class PymolRMSF:
             mean_coord[k] = np.mean(np.array([atom_coord[k][x].reshape(-1) for x in range(len(atom_coord[k]))]),
                                     axis=0).reshape(atom_coord[k][0].shape)
 
-        return mean_coord
+        return mean_coord,atom_coord
 
     def calculte_rmsf(self):
         RMSF = {}
-        for resi in list(self.atom_names.keys()):
-            RMSF[resi] = np.sqrt(np.sum((self.atom_coord_A[resi] -
-                                         self.mean_coord[resi]) ** 2, axis=1))
+        RMSF_mean = {}
+        # for resi in list(self.atom_names.keys()):
+        #     RMSF[resi] = np.sqrt(np.sum((self.atom_coord_A[resi] -
+        #                                  self.mean_coord[resi]) ** 2, axis=1))
 
-        return RMSF
+        squared_differnce = {}
+        squared_mean = {}
+        for resi in list(self.atom_names.keys()):
+            result = np.zeros(len(self.atom_coord[resi][0]))
+            for x in self.atom_coord[resi]:
+                # RMSF[resi] = np.sqrt(np.sum((x -
+                #                              self.mean_coord[resi]) ** 2, axis=1))
+                result += np.sum((x - self.mean_coord[resi]) ** 2, axis=1)
+
+            squared_differnce[resi] = result
+            squared_mean[resi] = result.mean()
+            RMSF[resi] = np.sqrt(squared_differnce[resi] / len(self.atom_coord[resi]))
+            RMSF_mean[resi] =  np.sqrt(squared_mean[resi] / len(self.atom_coord[resi]))
+
+
+        return RMSF,RMSF_mean
 
     def colour_by_RMSD(self):
         cmd.create("pdb", f"{self.files[0]}")
@@ -111,16 +129,16 @@ class PymolRMSF:
         return max
 
     def plt_residue(self,type="bar"):
-        residue_dict_to_plot = {}
-        df_atom_name = self.df
-        df_atom_name = df_atom_name.fillna(0)
-        for c in self.df.columns:
-            residue_dict_to_plot[c] = np.mean(df_atom_name[df_atom_name[c] != 0][c])
+        # residue_dict_to_plot = {}
+        # df_atom_name = self.df
+        # df_atom_name = df_atom_name.fillna(0)
+        # for c in self.df.columns:
+        #     residue_dict_to_plot[c] = np.mean(df_atom_name[df_atom_name[c] != 0][c])
 
-        residue_df = pd.DataFrame(residue_dict_to_plot.items(), columns=["residue_name", "RMSF"])
+        residue_df = self.residue_df
 
         fig, ax = plt.subplots(figsize=(15, 8))
-        ax.bar(residue_df["residue_name"], residue_df["RMSF"]) if type == "bar" else ax.plot(residue_df["residue_name"], residue_df["RMSF"])
+        ax.bar(residue_df["Residue_name"], residue_df["RMSF"]) if type == "bar" else ax.plot(residue_df["Residue_name"], residue_df["RMSF"])
         ax.set_ylabel(r'RMSF $\AA$')
         ax.set_xlabel('Residue')
         plt.xticks(rotation=90)
@@ -155,8 +173,21 @@ class PymolRMSF:
         for x in list(residue_dict.keys()):
             resn_dict[f"{self.get_residue_name(x)}_{x}"] = residue_dict[x]
 
+        resn_residue = {}
+
+        resi = [int(x.split("_")[1]) for x in list(self.RMSF_mean.keys())]
+        resi.sort()
+
+        for x in [f"d_{x}" for x in resi]:
+            name = x.split("_")[1]
+            resn_residue[f"{self.get_residue_name(name)}_{name}"] = self.RMSF_mean[f"d_{name}"]
+
+        df_residue = pd.DataFrame(resn_residue.items(),columns=["Residue_name","RMSF"])
+        df_residue.to_csv("residue_wise.csv")
+
+
         df_atom_name = pd.DataFrame(resn_dict)
-        df_atom_name.to_csv("test.csv")
+        df_atom_name.to_csv("atom_wise.csv")
         # df_atom_name = df_atom_name.replace(np.nan, 0)
         out_pdf = f'RMSF_by_hevay_atom.pdf'
         pdf = matplotlib.backends.backend_pdf.PdfPages(out_pdf)
@@ -179,7 +210,7 @@ class PymolRMSF:
             plt.close()
 
         pdf.close()
-        return df_atom_name
+        return df_atom_name, df_residue
 
 def run():
     Files = [x for x in os.listdir() if "frame" in x]
