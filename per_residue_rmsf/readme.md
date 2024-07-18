@@ -13,7 +13,7 @@ The formula of the RMSF is given as below:
 Where 
 $\rho \text{RMSF}_i$ is per atom RMSF.
 
-and $r_{i,j}$ is atom of interest, $\langle r_i \rangle$ is mean of co-ordinates of the specified atom.
+and $r_{i,j}$ is atom of interest, $\langle r_i \rangle$ is mean of co-ordinates of the specified atom, j is the number of frames.
 
 For per residue RMSF, mean of all atom wise  is taken as given below:
 ```math
